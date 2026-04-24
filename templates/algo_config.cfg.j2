@@ -1,0 +1,159 @@
+# Synced with: https://github.com/trailofbits/algo/blob/main/config.cfg
+# Templated by algo-ansible for non-interactive deploy. Do not set world-writable perms on the clone dir.
+---
+# ============================================
+# TROUBLESHOOTING DEPLOYMENT ISSUES
+# ============================================
+algo_no_log: {{ algo_no_log | bool | lower }} # Set to 'false' for debugging (shows sensitive data in output)
+
+users:
+{% for u in algo_vpn_users %}
+  - {{ u | to_json }}
+{% endfor %}
+
+### Review these options BEFORE you run Algo, as they are very difficult/impossible to change after the server is deployed.
+
+ssh_port: {{ algo_ssh_port }}
+
+ipsec_enabled: {{ ipsec_enabled | bool | lower }}
+wireguard_enabled: {{ wireguard_enabled | bool | lower }}
+wireguard_port: {{ wireguard_port }} # Change if blocked by your network (avoid 53/UDP)
+alternative_ingress_ip: false
+
+reduce_mtu: {{ reduce_mtu | default(0) }}
+
+adblock_lists:
+{% for url in algo_adblock_lists | default([]) %}
+  - {{ url | to_json }}
+{% endfor %}
+
+dns_encryption: {{ dns_encryption | bool | lower }}
+
+BetweenClients_DROP: {{ BetweenClients_DROP | bool | lower }}
+block_smb: {{ block_smb | bool | lower }}
+block_netbios: {{ block_netbios | bool | lower }}
+
+unattended_reboot:
+  enabled: {{ unattended_reboot.enabled | default(false) | bool | lower }}
+  time: {{ (unattended_reboot.time | default('06:00')) | to_json }}
+
+### Privacy Settings ###
+strongswan_log_level: {{ strongswan_log_level | default(-1) }}
+privacy_enhancements_enabled: {{ privacy_enhancements_enabled | bool | lower }}
+
+### Advanced users only below this line ###
+dnscrypt_servers:
+  ipv4:
+    - cloudflare
+  ipv6:
+    - cloudflare-ipv6
+
+custom_server_stamps: {}
+
+dns_servers:
+  ipv4:
+    - 1.1.1.1
+    - 1.0.0.1
+  ipv6:
+    - 2606:4700:4700::1111
+    - 2606:4700:4700::1001
+
+pki_in_tmpfs: true
+keys_clean_all: false
+
+### VPN Network Configuration ###
+strongswan_network: 10.48.0.0/16
+strongswan_network_ipv6: "2001:db8:4160::/48"
+wireguard_network_ipv4: 10.49.0.0/16
+wireguard_network_ipv6: 2001:db8:a160::/48
+wireguard_PersistentKeepalive: 0
+
+# Randomly generated IP (evaluated by Algo when the server playbooks run; keep literal jinja2 below)
+local_service_ip: "{{ "{{" }} '172.16.0.1' | ansible.utils.ipmath(1048573 | random(seed=algo_server_name + ansible_fqdn)) {{ "}}" }}"
+local_service_ipv6: "{{ "{{" }} 'fd00::1' | ansible.utils.ipmath(1048573 | random(seed=algo_server_name + ansible_fqdn)) {{ "}}" }}"
+
+congrats:
+  common: |
+    "# Congratulations! #"
+    "# Your Algo server is running. #"
+    "# Config files and certificates are in the ./configs/ directory. #"
+    "# Go to https://whoer.net/ after connecting #"
+    "# and ensure that all your traffic passes through the VPN. #"
+    {% raw %}"# Local DNS resolver {{ local_service_ip }}{{ ', ' + local_service_ipv6 if ipv6_support else '' }} #"
+    {% endraw %}
+  p12_pass: |
+    {% raw %}"# The p12 and SSH keys password for new users is {{ p12_export_password }} #"
+    {% endraw %}
+  ca_key_pass: |
+    {% raw %}"# The CA key password is {{ CA_password|default(omit) }} #"
+    {% endraw %}
+  ssh_access: |
+    {% raw %}"# Shell access: ssh -F configs/{{ ansible_ssh_host|default(omit) }}/ssh_config {{ algo_server_name }} #"
+    {% endraw %}
+
+SSH_keys:
+  comment: algo@ssh
+  private: configs/algo.pem
+  private_tmp: /tmp/algo-ssh.pem
+  public: configs/algo.pem.pub
+
+cloud_providers:
+  azure:
+    size: Standard_B1S
+    osDisk:
+      type: Standard_LRS
+    image:
+      publisher: Canonical
+      offer: 0001-com-ubuntu-minimal-jammy-daily
+      sku: minimal-22_04-daily-lts
+      version: latest
+  digitalocean:
+    size: s-1vcpu-1gb
+    image: "ubuntu-22-04-x64"
+  ec2:
+    encrypted: true
+    use_existing_eip: false
+    size: t3.micro
+    image:
+      name: "ubuntu-jammy-22.04"
+      arch: x86_64
+      owner: "099720109477"
+    instance_market_type: on-demand
+  gce:
+    size: e2-micro
+    image: ubuntu-2204-lts
+    external_static_ip: false
+  lightsail:
+    size: nano_2_0
+    image: ubuntu_22_04
+  scaleway:
+    size: DEV1-S
+    image: "Ubuntu 22.04 Jammy Jellyfish"
+    arch: x86_64
+  hetzner:
+    server_type: cpx22
+    image: ubuntu-22.04
+  openstack:
+    flavor_ram: ">=512"
+    image: Ubuntu-22.04
+  cloudstack:
+    size: Micro
+    image: Linux Ubuntu 22.04 LTS 64-bit
+    disk: 10
+  vultr:
+    os: "Ubuntu 22.04 LTS x64"
+    size: vc2-1c-1gb
+  linode:
+    type: g6-nanode-1
+    image: linode/ubuntu22.04
+  local: {}
+
+fail_hint:
+  - Sorry, but something went wrong!
+  - https://trailofbits.github.io/algo/troubleshooting.html
+
+booleans_map:
+  "Y": true
+  "y": true
+  "N": false
+  "n": false

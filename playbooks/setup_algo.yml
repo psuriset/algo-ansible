@@ -1,0 +1,240 @@
+---
+# Trail of Bits Algo: clone, render config, run uv sync, then Algo main playbooks.
+#   ansible-playbook -i inventory/hosts playbooks/setup_algo.yml
+# Add API keys in group_vars/all.yml, group_vars/secrets.yml, or with -e.
+
+- name: Algo (Trail of Bits) — clone, configure, deploy
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  pre_tasks:
+    - name: Local .local/bin (uv default)
+      ansible.builtin.set_fact:
+        _local_bin: "{{ (ansible_user_dir + '/.local/bin') if (ansible_user_dir is defined) else (ansible_env.HOME + '/.local/bin') }}"
+
+    - name: Optional secrets file path
+      ansible.builtin.set_fact:
+        _secrets_path: "{{ (playbook_dir, '..', 'group_vars', 'secrets.yml') | path_join }}"
+
+    - name: Stat optional secrets
+      ansible.builtin.stat:
+        path: "{{ _secrets_path }}"
+      register: _sec_file
+
+    - name: Load group_vars/secrets.yml when it exists
+      ansible.builtin.include_vars: "{{ _secrets_path }}"
+      when: _sec_file.stat.exists
+
+    - name: Default Algo source directory if unset
+      ansible.builtin.set_fact:
+        algo_install_path: "{% if (algo_install_path is not defined) or (algo_install_path|default('')|string|length) < 1 %}{{ (playbook_dir, '..', 'build', 'algo') | path_join }}{% else %}{{ algo_install_path }}{% endif %}"
+
+  tasks:
+    - name: OpenStack / DreamCompute reminder
+      ansible.builtin.debug:
+        msg: >
+          You chose provider=openstack. Source your OpenStack RC (API) in this shell
+          before running, per Algo docs, so credentials are in the environment.
+      when: provider is defined and provider == "openstack"
+
+    - name: Validate provider and required credentials
+      block:
+        - name: Assert provider
+          ansible.builtin.assert:
+            that:
+              - provider is defined
+              - provider in [
+                  'digitalocean', 'ec2', 'gce', 'azure', 'vultr', 'lightsail', 'scaleway',
+                  'openstack', 'cloudstack', 'hetzner', 'linode', 'local'
+                ]
+            fail_msg: "Set a supported 'provider' (see Algo deploy-from-ansible.md)."
+
+        - name: DigitalOcean — do_token and region
+          when: provider == "digitalocean"
+          ansible.builtin.assert:
+            that:
+              - (do_token is defined) and (do_token | string | length) > 0
+              - (region is defined) and (region | string | length) > 0
+            fail_msg: "Set do_token and region in group_vars or -e do_token=... -e region=..."
+
+        - name: EC2 or Lightsail — AWS keys and region
+          when: provider in ['ec2', 'lightsail']
+          ansible.builtin.assert:
+            that:
+              - (aws_access_key is defined) and (aws_access_key | string | length) > 0
+              - (aws_secret_key is defined) and (aws_secret_key | string | length) > 0
+              - (region is defined) and (region | string | length) > 0
+            fail_msg: "Set aws_access_key, aws_secret_key, and region."
+
+        - name: GCE — credentials file and region
+          when: provider == "gce"
+          ansible.builtin.assert:
+            that:
+              - (gce_credentials_file is defined) and (gce_credentials_file | string | length) > 0
+              - (region is defined) and (region | string | length) > 0
+            fail_msg: "Set gce_credentials_file and region."
+
+        - name: Azure
+          when: provider == "azure"
+          ansible.builtin.assert:
+            that:
+              - (azure_tenant is defined) and (azure_tenant | string | length) > 0
+              - (azure_client_id is defined) and (azure_client_id | string | length) > 0
+              - (azure_secret is defined) and (azure_secret | string | length) > 0
+              - (azure_subscription_id is defined) and (azure_subscription_id | string | length) > 0
+              - (region is defined) and (region | string | length) > 0
+            fail_msg: "Set azure_tenant, azure_client_id, azure_secret, azure_subscription_id, and region."
+
+        - name: Vultr
+          when: provider == "vultr"
+          ansible.builtin.assert:
+            that:
+              - (vultr_config is defined) and (vultr_config | string | length) > 0
+              - (region is defined) and (region | string | length) > 0
+            fail_msg: "Set vultr_config and region (see Algo Vultr docs)."
+
+        - name: Hetzner
+          when: provider == "hetzner"
+          ansible.builtin.assert:
+            that:
+              - (hcloud_token is defined) and (hcloud_token | string | length) > 0
+              - (region is defined) and (region | string | length) > 0
+            fail_msg: "Set hcloud_token and region (or export HCLOUD_TOKEN)."
+
+        - name: Scaleway
+          when: provider == "scaleway"
+          ansible.builtin.assert:
+            that:
+              - (scaleway_token is defined) and (scaleway_token | string | length) > 0
+              - (region is defined) and (region | string | length) > 0
+            fail_msg: "Set scaleway_token and region."
+
+        - name: Linode
+          when: provider == "linode"
+          ansible.builtin.assert:
+            that:
+              - (linode_token is defined) and (linode_token | string | length) > 0
+              - (region is defined) and (region | string | length) > 0
+            fail_msg: "Set linode_token and region (or export LINODE_TOKEN)."
+
+        - name: CloudStack
+          when: provider == "cloudstack"
+          ansible.builtin.assert:
+            that:
+              - (cs_config is defined) and (cs_config | string | length) > 0
+              - (cs_region is defined) and (cs_region | string | length) > 0
+            fail_msg: "Set cs_config, cs_region, and cs_zones (see Algo CloudStack docs)."
+
+        - name: Local (existing server)
+          when: provider == "local"
+          ansible.builtin.assert:
+            that:
+              - (server is defined) and (server | string | length) > 0
+              - (ca_password is defined) and (ca_password | string | length) > 0
+            fail_msg: "Set server and ca_password; optional ssh_user, endpoint (see Algo 'local' docs)."
+
+    - name: Create parent of Algo clone directory
+      ansible.builtin.file:
+        path: "{{ algo_install_path | dirname }}"
+        state: directory
+        mode: "0755"
+
+    - name: Clone or update Algo from GitHub
+      ansible.builtin.git:
+        repo: "{{ algo_repo_url }}"
+        dest: "{{ algo_install_path }}"
+        version: "{{ algo_version }}"
+        update: "{{ algo_clone_force_update | default(true) }}"
+
+    - name: Tighten clone directory permissions
+      ansible.builtin.file:
+        path: "{{ algo_install_path }}"
+        state: directory
+        mode: "0755"
+        follow: true
+
+    - name: Write config.cfg (VPN users, protocols, networks)
+      ansible.builtin.template:
+        src: ../templates/algo_config.cfg.j2
+        dest: "{{ algo_install_path }}/config.cfg"
+        mode: "0644"
+
+    - name: Write Algo non-interactive extra variables
+      ansible.builtin.template:
+        src: ../templates/algo_extra_vars.yml.j2
+        dest: "{{ algo_install_path }}/.algo-deploy-extras.yml"
+        mode: "0600"
+      no_log: true
+
+    - name: See if uv is on PATH
+      ansible.builtin.command:
+        cmd: "command -v uv"
+      register: _uv_cmd
+      environment:
+        PATH: "{{ _local_bin }}:{{ ansible_env.PATH }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Install uv (Astral) when missing
+      when: _uv_cmd.rc != 0
+      ansible.builtin.shell: |
+        set -e
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+      args:
+        creates: "{{ _local_bin }}/uv"
+        executable: /bin/bash
+      environment:
+        UV_INSTALL_DIR: "{{ _local_bin }}"
+
+    - name: Set path to uv binary
+      ansible.builtin.set_fact:
+        _uv_path: "{{ (_uv_cmd.stdout | trim) if _uv_cmd.rc == 0 else ( _local_bin + '/uv' ) }}"
+
+    - name: Assert uv is available
+      ansible.builtin.assert:
+        that: _uv_path is defined
+        fail_msg: "uv was not found. Add {{ _local_bin }} to your PATH, or re-run the install task."
+
+    - name: Install Algo project dependencies
+      ansible.builtin.command:
+        argv: ["{{ _uv_path }}", "sync"]
+        chdir: "{{ algo_install_path }}"
+      environment:
+        PATH: "{{ _local_bin }}:{{ ansible_env.PATH }}"
+
+    - name: Run Algo (main.yml)
+      ansible.builtin.command:
+        argv:
+          - "{{ _uv_path }}"
+          - run
+          - ansible-playbook
+          - main.yml
+          - -e
+          - "@{{ algo_install_path }}/.algo-deploy-extras.yml"
+        chdir: "{{ algo_install_path }}"
+      environment: "{{ (algo_extra_env | default({})) | combine( ( {'GCE_CREDENTIALS_FILE_PATH': (gce_credentials_file | string)} if ( (provider is defined) and (provider == 'gce') and (gce_credentials_file is defined) and ((gce_credentials_file | string) | length) > 0 ) else {} ) ) | combine( {'PATH': ( _local_bin + ':' + (ansible_env.PATH | string) )} ) }}"
+      register: _algo_run
+      no_log: true
+      # On failure, stop; operator can re-run with no_log: false in this task to debug.
+
+    - name: After successful deploy
+      ansible.builtin.debug:
+        msg: "Algo finished. Client material is under {{ algo_install_path }}/configs/ when the Algo play succeeded."
+      when: _algo_run is not failed
+
+    - name: Optional Telegram notification
+      when:
+        - (telegram_notify | default(false) | bool)
+        - (telegram_bot_token is defined) and (telegram_bot_token | string | length) > 0
+        - (telegram_chat_id is defined) and (telegram_chat_id | string | length) > 0
+        - ( _algo_run is not failed)
+      ansible.builtin.uri:
+        url: "https://api.telegram.org/bot{{ telegram_bot_token }}/sendMessage"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          chat_id: "{{ telegram_chat_id | string }}"
+          text: "Algo run completed ({{ server_name | default('algo') }}, provider={{ provider }}). See {{ algo_install_path }}/configs/."
+        status_code: 200
+      no_log: true
+      failed_when: false

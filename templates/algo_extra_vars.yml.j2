@@ -1,0 +1,62 @@
+# Generated for Algo. Restrict file permissions; avoid committing.
+# Reference: https://github.com/trailofbits/algo/blob/main/docs/deploy-from-ansible.md
+---
+provider: {{ provider | to_json }}
+server_name: {{ server_name | to_json }}
+ondemand_cellular: {{ ondemand_cellular | default(false) | bool }}
+ondemand_wifi: {{ ondemand_wifi | default(false) | bool }}
+ondemand_wifi_exclude: {{ ondemand_wifi_exclude | default('') | to_json }}
+dns_adblocking: {{ dns_adblocking | default(true) | bool }}
+ssh_tunneling: {{ ssh_tunneling | default(true) | bool }}
+store_pki: {{ store_pki | default(true) | bool }}
+region: {{ region | to_json }}
+{% if p12_optimized is defined -%}
+p12_optimized: {{ p12_optimized | bool }}
+{% endif %}
+{% if p12_unencrypted is defined -%}
+p12_unencrypted: {{ p12_unencrypted | bool }}
+{% endif %}
+{% if p12_export_password is defined and p12_export_password | length > 0 -%}
+p12_export_password: {{ p12_export_password | to_json }}
+{% endif %}
+{% if do_token is defined and do_token | default('') | length > 0 -%}
+do_token: {{ do_token | to_json }}
+{% endif %}
+{% if aws_access_key is defined and (aws_access_key | default('') | length) > 0 and aws_secret_key is defined and (aws_secret_key | default('') | length) > 0 -%}
+aws_access_key: {{ aws_access_key | to_json }}
+aws_secret_key: {{ aws_secret_key | to_json }}
+{% endif %}
+{% if gce_credentials_file is defined and gce_credentials_file | default('') | length > 0 -%}
+gce_credentials_file: {{ gce_credentials_file | to_json }}
+{% endif %}
+{% if azure_client_id is defined and azure_client_id | default('') | length > 0 -%}
+azure_tenant: {{ (azure_tenant | default('') | to_json) }}
+azure_client_id: {{ azure_client_id | to_json }}
+azure_secret: {{ (azure_secret | default('') | to_json) }}
+azure_subscription_id: {{ (azure_subscription_id | default('') | to_json) }}
+{% endif %}
+{% if vultr_config is defined and vultr_config | default('') | length > 0 -%}
+vultr_config: {{ vultr_config | to_json }}
+{% endif %}
+{% if hcloud_token is defined and hcloud_token | default('') | length > 0 -%}
+hcloud_token: {{ hcloud_token | to_json }}
+{% endif %}
+{% if scaleway_token is defined and scaleway_token | default('') | length > 0 -%}
+scaleway_token: {{ scaleway_token | to_json }}
+{% endif %}
+{% if cs_config is defined and cs_config | default('') | length > 0 -%}
+cs_config: {{ cs_config | to_json }}
+cs_region: {{ (cs_region | default('') | to_json) }}
+cs_zones: {{ (cs_zones | default('') | to_json) }}
+{% endif %}
+{% if linode_token is defined and linode_token | default('') | length > 0 -%}
+linode_token: {{ linode_token | to_json }}
+{% endif %}
+{% if provider == "local" -%}
+server: {{ server | to_json }}
+endpoint: {{ (endpoint | default(server) | to_json) }}
+{% if ssh_user is defined and (ssh_user | string | length) > 0 -%}
+ssh_user: {{ ssh_user | to_json }}
+{% endif %}
+ca_password: {{ (ca_password | to_json) }}
+{% endif %}

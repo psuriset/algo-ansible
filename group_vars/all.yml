@@ -1,0 +1,83 @@
+# Safe defaults. Override in group_vars/secrets.yml (recommended, git-ignored) or set -e on the command line.
+---
+# Where to clone the upstream Algo project (https://github.com/trailofbits/algo)
+algo_repo_url: "https://github.com/trailofbits/algo.git"
+# Branch, tag, or commit
+algo_version: "main"
+# Clone destination (set absolute path) — if unset, playbooks/setup_algo.yml defaults to <this repo>/build/algo
+# algo_install_path: "/var/tmp/algo"
+algo_clone_force_update: true
+
+# --- Required: deploy target (set one provider and its credentials) ---
+# digitalocean | ec2 | gce | azure | vultr | lightsail | scaleway | openstack | cloudstack | hetzner | linode | local
+provider: "digitalocean"
+
+# Common
+server_name: "algo"
+region: "nyc1"
+
+# --- Provider API keys / config files (uncomment and set what you use) ---
+# do_token: ""
+# aws_access_key: ""
+# aws_secret_key: ""
+# gce_credentials_file: ""   # e.g. /path/to/svc.json, or set env GCE_CREDENTIALS_FILE_PATH
+# azure_secret: ""
+# azure_tenant: ""
+# azure_client_id: ""
+# azure_subscription_id: ""
+# vultr_config: ""             # path to .vultr.ini
+# hcloud_token: ""           # or env HCLOUD_TOKEN
+# linode_token: ""            # or env LINODE_TOKEN
+# scaleway_token: ""
+# cs_config: ""               # .cloudstack.ini; env CLOUDSTACK_CONFIG also supported
+# openstack: source an rc file before play (per Algo docs)
+
+# --- "Install to existing server" (provider: local) ---
+# server: "203.0.113.10"
+# endpoint: "203.0.113.10"    # public IP
+# ssh_user: "ubuntu"
+# ca_password: "strong-random"  # protect CA private key
+# p12_export_password: "optional"  # set if you want to predefine (otherwise Algo generates)
+# p12_unencrypted: false
+# p12_optimized: true
+
+# --- Algo feature toggles (passed as extra vars to Algo) ---
+# Match deploy-from-ansible.md: https://github.com/trailofbits/algo/blob/main/docs/deploy-from-ansible.md
+ondemand_cellular: false
+ondemand_wifi: false
+ondemand_wifi_exclude: "HomeNet,OfficeWifi"  # if ondemand_wifi true, comma-separated
+dns_adblocking: true
+ssh_tunneling: true
+store_pki: true
+
+# --- Algo config.cfg: VPN list and options (templated to upstream repo) ---
+# Every device needs a unique username (no email addresses; quote numeric-only names).
+algo_vpn_users:
+  - phone
+  - laptop
+
+# Copied/aligned with Algo’s config.cfg — see upstream for meaning.
+algo_no_log: true
+algo_ssh_port: 4160
+ipsec_enabled: true
+wireguard_enabled: true
+wireguard_port: 51820
+reduce_mtu: 0
+BetweenClients_DROP: true
+block_smb: true
+block_netbios: true
+dns_encryption: true
+privacy_enhancements_enabled: true
+strongswan_log_level: -1
+unattended_reboot:
+  enabled: false
+  time: "06:00"
+
+# Optional: adblock host lists (list of URLs)
+algo_adblock_lists:
+  - "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+
+# --- Post-deploy: Telegram (NOT part of stock Algo; this playbook sends a success notice) ---
+telegram_notify: false
+# telegram_bot_token: "123:ABC"   # from @BotFather
+# telegram_chat_id: "123456"      # destination chat
