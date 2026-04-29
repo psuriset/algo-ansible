@@ -1,6 +1,6 @@
 ---
 # Trail of Bits Algo: clone, render config, run uv sync, then Algo main playbooks.
-#   ansible-playbook -i inventory/hosts playbooks/setup_algo.yml
+#   cd ~/algo-ansible && ansible-playbook playbooks/setup_algo.yml
 # Add API keys in group_vars/all.yml, group_vars/secrets.yml, or with -e.
 
 - name: Algo (Trail of Bits) — clone, configure, deploy
@@ -27,9 +27,35 @@
 
     - name: Default Algo source directory if unset
       ansible.builtin.set_fact:
-        algo_install_path: "{% if (algo_install_path is not defined) or (algo_install_path|default('')|string|length) < 1 %}{{ (playbook_dir, '..', 'build', 'algo') | path_join }}{% else %}{{ algo_install_path }}{% endif %}"
+        algo_install_path: "{% if (algo_install_path is not defined) or (algo_install_path|default('')|string|length) < 1 %}{% set _h = lookup('env', 'HOME') | default('', true) | trim %}{% if _h | length > 0 %}{{ _h }}/algo{% else %}{{ (playbook_dir, '..', 'build', 'algo') | path_join }}{% endif %}{% else %}{{ algo_install_path }}{% endif %}"
 
   tasks:
+    - name: Default local provider to this machine (server, endpoint, ssh_user)
+      ansible.builtin.set_fact:
+        server: "{{ _ip }}"
+        endpoint: "{{ _ip }}"
+      vars:
+        _ip: >-
+          {% if ansible_default_ipv4 is defined and ansible_default_ipv4.address | default('') | length > 0 %}
+          {{ ansible_default_ipv4.address }}
+          {% elif ansible_all_ipv4_addresses is defined and ansible_all_ipv4_addresses | length > 0 %}
+          {{ ansible_all_ipv4_addresses | first }}
+          {% else %}
+          127.0.0.1
+          {% endif %}
+      when:
+        - provider is defined
+        - provider == "local"
+        - (server is not defined) or ((server | default('') | string | trim | length) < 1)
+
+    - name: Default ssh_user for local provider
+      ansible.builtin.set_fact:
+        ssh_user: "{{ ansible_user_id }}"
+      when:
+        - provider is defined
+        - provider == "local"
+        - (ssh_user is not defined) or ((ssh_user | default('') | string | trim | length) < 1)
+
     - name: OpenStack / DreamCompute reminder
       ansible.builtin.debug:
         msg: >
@@ -131,7 +157,7 @@
             that:
               - (server is defined) and (server | string | length) > 0
               - (ca_password is defined) and (ca_password | string | length) > 0
-            fail_msg: "Set server and ca_password; optional ssh_user, endpoint (see Algo 'local' docs)."
+            fail_msg: "Set ca_password in group_vars/secrets.yml or -e; server/endpoint/ssh_user default to this host when omitted (see Algo 'local' docs)."
 
     - name: Create parent of Algo clone directory
       ansible.builtin.file:
